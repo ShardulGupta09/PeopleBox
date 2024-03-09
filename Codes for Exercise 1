@@ -24,7 +24,6 @@ def df_merger(word):
     df2["Attribute"] = [x[:-5] for x in df2["Date Attribute"]]
     df2 = df2[["Employee Code","Attribute","Dates"]]
     df3 = pd.merge(df1,df2,on=["Employee Code","Attribute"],how="left")
-    df3["No."] = [x[-1] for x in df3["Attribute"]]
     df4 = df3.sort_values(["Employee Code","Date of Joining"]).reset_index(drop=True)
     
     df5 = df4[["Employee Code","Manager Employee Code"]]
