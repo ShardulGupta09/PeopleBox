@@ -1,0 +1,105 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Mar  9 19:42:43 2024
+
+@author: lenovo
+"""
+
+import pandas as pd
+df = pd.read_csv("C:\\Users\\lenovo\\Desktop\\M Sc ASA\\Semester 2\\PeopleBx\\inputt.csv")
+df
+
+import datetime as dt
+import numpy as np
+
+def df_merger(word):
+    col = df.columns
+    col1 = [x for x in col if word in x]
+    col2 = [x for x in col1 if "date" not in x]
+    col3 = [x for x in col1 if "date" in x]
+    df1 = pd.melt(df, id_vars=['Employee Code', 'Manager Employee Code', 'Date of Joining', 'Date of Exit'],value_vars = col2,
+              var_name='Attribute', value_name='Value')
+    df2 = pd.melt(df, id_vars=['Employee Code', 'Manager Employee Code', 'Date of Joining', 'Date of Exit'],value_vars = col3,
+              var_name='Date Attribute', value_name='Dates')
+    df2["Attribute"] = [x[:-5] for x in df2["Date Attribute"]]
+    df2 = df2[["Employee Code","Attribute","Dates"]]
+    df3 = pd.merge(df1,df2,on=["Employee Code","Attribute"],how="left")
+    df3["No."] = [x[-1] for x in df3["Attribute"]]
+    df4 = df3.sort_values(["Employee Code","Date of Joining"]).reset_index(drop=True)
+    
+    df5 = df4[["Employee Code","Manager Employee Code"]]
+    df5.insert(df5.shape[1],word,df4["Value"].values)
+    
+    def time(x):return dt.datetime.strptime(x,"%Y-%m-%d")
+    dat = []
+    for i in range(df4.shape[0]):
+        if str(df4.iloc[i,6]) == 'nan':
+            dat.append(time(df4["Date of Joining"][i]))
+        else: dat.append(time(df4["Dates"][i]))
+    df5.insert(df5.shape[1],"Effective Date",dat)
+
+    grp = df5.groupby("Employee Code")    
+    if word == "Compensation":
+        comp = []
+        for i in range(1,df5["Employee Code"].nunique()+1):
+            s = []
+            for j in range(grp.get_group(i).shape[1]-1):
+                if j == 0: 
+                    s.append(np.nan)
+                else: s.append(grp.get_group(i).iloc[j-1,2])
+            comp.extend(s)
+        df5.insert(df5.shape[1]-1,"Last "+ word,comp)
+    df5 = df5.dropna(subset=word)
+    return df5
+
+
+df_comp = df_merger("Compensation")
+df_review = df_merger("Review")
+df_engage = df_merger("Engagement")
+
+df_comp
+df_review
+df_engage
+
+df_merged = pd.concat([df_comp,df_review,df_engage]).reset_index(drop=True)
+df_merged_1 = df_merged.sort_values(["Employee Code","Effective Date"])
+
+def update_next_none_cells(df_merged_1, columns_to_update):
+    current_employee_code = None
+    current_values = {}
+    
+    for index, row in df_merged_1.iterrows():
+        if row['Employee Code'] != current_employee_code:
+            current_employee_code = row['Employee Code']
+            current_values = {}
+        
+        for column in columns_to_update:
+            value = row[column]
+            if pd.notnull(value):
+                current_values[column] = value
+            else:
+                for col in columns_to_update:
+                    if col in current_values:
+                        df_merged_1.at[index, col] = current_values[col]
+        
+    return df_merged_1
+
+update_next_none_cells(df_merged_1, ["Engagement"])
+update_next_none_cells(df_merged_1, ["Review"])
+update_next_none_cells(df_merged_1, ["Last Compensation"])
+update_next_none_cells(df_merged_1, ["Compensation"])
+dff = df_merged_1.iloc[:,[0,1,3,2,5,6,4]]
+dff['Effective Date'] = pd.to_datetime(dff['Effective Date'])
+
+# Function to calculate 'End Date' based on conditions
+def calculate_end_date(group):
+    group['End Date'] = group['Effective Date'].shift(-1) - pd.Timedelta(days=1)
+    group.loc[group.index[-1], 'End Date'] = '2100-01-01' if group['Employee Code'].iloc[0] != 3 else '2023-12-30'
+    return group
+
+# Apply the function to each group of employees
+dff = dff.groupby('Employee Code',dropna = True).apply(calculate_end_date)
+final_df = dff.reset_index(drop = True)
+print(final_df)
+
+final_df.to_csv('C:\\Users\\lenovo\\Desktop\\M Sc ASA\\Semester 2\\PeopleBx\\output.csv', index=False)
